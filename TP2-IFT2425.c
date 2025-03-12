@@ -1,13 +1,14 @@
 //------------------------------------------------------
-// module  : Tp2-IFT2425.c
-// author  : francois.frigon@umontreal.ca
-// date    : 
-// version : 1.0
-// language: C++
+// module  :  Tp2-IFT2425.c
+// authors :  Xavier Dontigny - 20215658 - xavier.dontigny@umontreal.ca
+//            Ton nom
+// date    :  14 Mars 2025
+// version :  1.0
+// language:  C++
 // note    :
 //------------------------------------------------------
-//  
-// test 
+
+
 //------------------------------------------------
 // FICHIERS INCLUS -------------------------------
 //------------------------------------------------
@@ -23,11 +24,11 @@
 #include <X11/Xutil.h>
 
 Display   *display;
-int	  screen_num;
-int 	  depth;
+int	      screen_num;
+int 	    depth;
 Window	  root;
 Visual*	  visual;
-GC	  gc;
+GC	      gc;
 
 /************************************************************************/
 /* OPEN_DISPLAY()							*/
@@ -586,7 +587,59 @@ void ConvertVelocityFieldInAroowField(float*** SeqImgOptFlot,float*** Vx,float**
 //--- Vos Fonctions Ici ---//
 //-------------------------//
 
+// Équation 6 pdf
+void calculDerivees(float** Img1, float** Img2, float** Ix, float** Iy, float** It, int length, int width) {
+  for (int i = 0; i < length - 1; i++) {
+      for (int j = 0; j < width - 1; j++) {
+          Ix[i][j] = (Img1[i][j+1] - Img1[i][j] + Img1[i+1][j+1] - Img1[i+1][j] +
+                      Img2[i][j+1] - Img2[i][j] + Img2[i+1][j+1] - Img2[i+1][j]) / 4.0;
+          
+          Iy[i][j] = (Img1[i+1][j] - Img1[i][j] + Img1[i+1][j+1] - Img1[i][j+1] +
+                      Img2[i+1][j] - Img2[i][j] + Img2[i+1][j+1] - Img2[i][j+1]) / 4.0;
+          
+          It[i][j] = (Img2[i][j] - Img1[i][j] + Img2[i+1][j] - Img1[i+1][j] +
+                      Img2[i][j+1] - Img1[i][j+1] + Img2[i+1][j+1] - Img1[i+1][j+1]) / 4.0;
 
+      }
+  }
+}
+
+void flotOptiqueJacobi(float** Ix, float** Iy, float** It, float*** OptFl_Vx, float*** OptFl_Vy, float** VxM, float** VyM, int length, int width, float alpha, int NBITER) {
+  
+  for (int k = 0; k < NBITER; k++) {
+
+      for (int i = 1; i < length - 1; i++) {
+          for (int j = 1; j < width - 1; j++) {
+              
+              // Équation 5 pdf 
+              VxM[i][j] = ((OptFl_Vx[k][i-1][j] + OptFl_Vx[k][i+1][j] + OptFl_Vx[k][i][j-1] + OptFl_Vx[k][i][j+1])/6.0 +
+                           (OptFl_Vx[k][i-1][j-1] + OptFl_Vx[k][i-1][j+1] + OptFl_Vx[k][i+1][j+1] + OptFl_Vx[k][i+1][j-1])/12.0);
+              
+              VyM[i][j] = ((OptFl_Vy[k][i-1][j] + OptFl_Vy[k][i+1][j] + OptFl_Vy[k][i][j-1] + OptFl_Vy[k][i][j+1])/6.0 +
+                           (OptFl_Vy[k][i-1][j-1] + OptFl_Vy[k][i-1][j+1] + OptFl_Vy[k][i+1][j+1] + OptFl_Vy[k][i+1][j-1])/12.0);
+              
+              // Équation 4 pdf
+              float denominateur = alpha * alpha + Ix[i][j] * Ix[i][j] + Iy[i][j] * Iy[i][j];
+              if (denominateur != 0) {
+                  OptFl_Vx[k+1][i][j] = VxM[i][j] - (Ix[i][j] * (Ix[i][j] * VxM[i][j] + Iy[i][j] * VyM[i][j] + It[i][j])) / denominateur;
+                  OptFl_Vy[k+1][i][j] = VyM[i][j] - (Iy[i][j] * (Ix[i][j] * VxM[i][j] + Iy[i][j] * VyM[i][j] + It[i][j])) / denominateur;
+              } else {
+                  OptFl_Vx[k+1][i][j] = VxM[i][j];
+                  OptFl_Vy[k+1][i][j] = VyM[i][j];
+              }
+
+          }
+      }
+
+      for (int i = 1; i < length - 1; i++) {
+          for (int j = 1; j < width - 1; j++) {
+              OptFl_Vx[k][i][j] = OptFl_Vx[k+1][i][j];
+              OptFl_Vy[k][i][j] = OptFl_Vy[k+1][i][j];
+          }
+      }
+      
+  }
+}
 
 //----------------------------------------------------------
 //----------------------------------------------------------
@@ -637,9 +690,9 @@ int main(int argc,char** argv)
  fflush(stdout);
 
  //>Allocation Memoire
- SeqImgOptFlot=fmatrix_allocate_3d(NBITER,length,width);
- OptFl_Vx=fmatrix_allocate_3d(NBITER,length,width);
- OptFl_Vy=fmatrix_allocate_3d(NBITER,length,width);
+ SeqImgOptFlot=fmatrix_allocate_3d(NBITER+1,length,width);
+ OptFl_Vx=fmatrix_allocate_3d(NBITER+1,length,width);
+ OptFl_Vy=fmatrix_allocate_3d(NBITER+1,length,width);
  Ix=fmatrix_allocate_2d(length,width);
  Iy=fmatrix_allocate_2d(length,width);
  It=fmatrix_allocate_2d(length,width);
@@ -655,13 +708,13 @@ int main(int argc,char** argv)
     
     //> Rempli OptFlotSequence (apr une seq. de flot optique aleatoire)
     //> les septs lignes suivantes sont a mettre en commentaire
-    for(k=0;k<NBITER;k++) 
-       { printf("\r  > Iteration > [%d/%d] ",k,NBITER);
-         float posx=0.3*cos(3.0*3.14*k/NBITER);
-         float posy=0.3*sin(3.0*3.14*k/NBITER);
-         for(i=5;i<length-5;i++) for(j=5;j<width-5;j++)
-	    {  OptFl_Vx[k][i][j]=posx;
-	       OptFl_Vy[k][i][j]=posy; } }
+    //for(k=0;k<NBITER;k++) 
+    //   { printf("\r  > Iteration > [%d/%d] ",k,NBITER);
+    //     float posx=0.3*cos(3.0*3.14*k/NBITER);
+    //   float posy=0.3*sin(3.0*3.14*k/NBITER);
+    //     for(i=5;i<length-5;i++) for(j=5;j<width-5;j++)
+	  //  {  OptFl_Vx[k][i][j]=posx;
+	  //     OptFl_Vy[k][i][j]=posy; } }
 
  
 
@@ -676,14 +729,10 @@ int main(int argc,char** argv)
  //-----------------------------------------------------------
  printf("\n\n Jacobi Iterations :\n");
  
- //Programmer ici ........
-
-
-
-
-
-
-
+ //Programmer ici ........  
+ 
+ calculDerivees(Img1, Img2, Ix, Iy, It, length, width);
+ flotOptiqueJacobi(Ix, Iy, It, OptFl_Vx, OptFl_Vy, VxM, VyM, length, width, alpha, NBITER);
 
  //Convert {OptFl_Vx[i][j],OptFl_Vy[i][j]} -> {Array Of Vector}
  ConvertVelocityFieldInAroowField(SeqImgOptFlot,OptFl_Vx,OptFl_Vy,length,width,NBITER,7);
@@ -751,5 +800,3 @@ int main(int argc,char** argv)
  printf("\n C'est fini... \n"); 
  return 0;
  }
-
-
